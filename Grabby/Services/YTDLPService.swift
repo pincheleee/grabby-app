@@ -3,6 +3,13 @@ import Foundation
 actor YTDLPService {
     static let shared = YTDLPService()
 
+    // Static regex for progress parsing (compiled once, reused across downloads)
+    private static let progressRegex = try! NSRegularExpression(pattern: #"(\d+\.?\d*)%"#)
+    private static let speedRegex = try! NSRegularExpression(pattern: #"(\d+\.?\d*\s*[KMG]iB/s)"#)
+    private static let etaRegex = try! NSRegularExpression(pattern: #"ETA\s+(\S+)"#)
+    private static let destRegex = try! NSRegularExpression(pattern: #"Destination:\s+(.+)$"#, options: .anchorsMatchLines)
+    private static let sizeRegex = try! NSRegularExpression(pattern: #"of\s+~?\s*(\d+\.?\d*\s*[KMG]iB)"#)
+
     // Static so nonisolated functions can access without data race
     private static let errorPatterns: [(String, String)] = [
         ("Sign in to confirm your age|age-restricted",
@@ -26,13 +33,15 @@ actor YTDLPService {
     ]
 
     private func ytdlpPath() -> String {
-        if let bundled = Bundle.main.path(forResource: "yt-dlp", ofType: nil) {
+        // Only check known safe locations -- never fall back to PATH
+        if let bundled = Bundle.main.path(forResource: "yt-dlp", ofType: nil),
+           FileManager.default.isExecutableFile(atPath: bundled) {
             return bundled
         }
         for p in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"] {
             if FileManager.default.isExecutableFile(atPath: p) { return p }
         }
-        return "yt-dlp"  // Let Process fail with a clear error
+        return ""  // Caller must check -- Process will fail with clear error
     }
 
     private func ffmpegDir() -> String {
@@ -77,8 +86,17 @@ actor YTDLPService {
         return (yt, ff)
     }
 
+    private func validateURL(_ url: String) throws {
+        guard let parsed = URL(string: url),
+              let scheme = parsed.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else {
+            throw GrabbyError.ytdlp("Only http/https URLs are supported.")
+        }
+    }
+
     func fetchInfo(url: String, cookieBrowser: String) async throws -> VideoInfo {
-        var args = ["--dump-json", "--no-download", url]
+        try validateURL(url)
+        var args = ["--dump-json", "--no-download", "--", url]
         if !cookieBrowser.isEmpty {
             args += ["--cookies-from-browser", cookieBrowser]
         }
@@ -93,7 +111,8 @@ actor YTDLPService {
     }
 
     func fetchPlaylist(url: String, cookieBrowser: String) async throws -> [PlaylistEntry] {
-        var args = ["--flat-playlist", "--dump-json", "--no-download", url]
+        try validateURL(url)
+        var args = ["--flat-playlist", "--dump-json", "--no-download", "--", url]
         if !cookieBrowser.isEmpty {
             args += ["--cookies-from-browser", cookieBrowser]
         }
@@ -101,9 +120,11 @@ actor YTDLPService {
         guard code == 0 else {
             throw GrabbyError.ytdlp(Self.parseErrorText(stderr))
         }
+        let maxEntries = 500
         var entries: [PlaylistEntry] = []
         for (i, line) in stdout.split(separator: "\n").enumerated() {
             guard !line.isEmpty else { continue }
+            guard entries.count < maxEntries else { break }
             if let data = line.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let id = json["id"] as? String ?? "\(i)"
@@ -129,11 +150,12 @@ actor YTDLPService {
 
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
-        let outputTemplate = "\(dir)/%(title)s.%(ext)s"
         var args = [
             "--newline", "--progress",
+            "--restrict-filenames",
             "--ffmpeg-location", ffmpegDir(),
-            "-o", outputTemplate,
+            "--paths", dir,
+            "-o", "%(title)s.%(ext)s",
         ]
 
         if !cookieBrowser.isEmpty {
@@ -158,12 +180,24 @@ actor YTDLPService {
             args += ["--merge-output-format", format.rawValue]
         }
 
+        args.append("--")  // End-of-options sentinel -- prevents URL from being parsed as flags
         args.append(job.url)
 
         let execPath = ytdlpPath()
         let env = enhancedEnv()
 
+        // Create process on MainActor before dispatching to background (avoids race on job.process)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: execPath)
+        process.arguments = args
+        process.environment = env
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.qualityOfService = .userInitiated
+
         await MainActor.run {
+            job.process = process
             job.status = .downloading
         }
 
@@ -171,19 +205,6 @@ actor YTDLPService {
         let capturedDir = dir
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: execPath)
-                process.arguments = args
-                process.environment = env
-
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
-                process.qualityOfService = .userInitiated
-
-                DispatchQueue.main.async {
-                    job.process = process
-                }
 
                 do {
                     try process.run()
@@ -197,47 +218,45 @@ actor YTDLPService {
                 }
 
                 let handle = pipe.fileHandleForReading
-                var allOutput = ""
-                let progressRegex = try! NSRegularExpression(pattern: #"(\d+\.?\d*)%"#)
-                let speedRegex = try! NSRegularExpression(pattern: #"(\d+\.?\d*\s*[KMG]iB/s)"#)
-                let etaRegex = try! NSRegularExpression(pattern: #"ETA\s+(\S+)"#)
-                let destRegex = try! NSRegularExpression(pattern: #"Destination:\s+(.+)$"#, options: .anchorsMatchLines)
-                let sizeRegex = try! NSRegularExpression(pattern: #"of\s+~?\s*(\d+\.?\d*\s*[KMG]iB)"#)
+                var lastLines: [String] = []  // Only keep last 50 lines for error parsing
 
                 while true {
                     let data = handle.availableData
                     if data.isEmpty { break }
                     guard let text = String(data: data, encoding: .utf8) else { continue }
-                    allOutput += text
 
-                    for line in text.split(separator: "\n") {
-                        let s = String(line)
+                    let newLines = text.split(separator: "\n").map(String.init)
+                    lastLines.append(contentsOf: newLines)
+                    if lastLines.count > 50 { lastLines = Array(lastLines.suffix(50)) }
+
+                    for s in newLines {
                         let range = NSRange(s.startIndex..., in: s)
 
-                        if let m = progressRegex.firstMatch(in: s, range: range),
+                        if let m = Self.progressRegex.firstMatch(in: s, range: range),
                            let r = Range(m.range(at: 1), in: s),
                            let val = Double(s[r]) {
                             DispatchQueue.main.async { job.progress = val }
                         }
-                        if let m = speedRegex.firstMatch(in: s, range: range),
+                        if let m = Self.speedRegex.firstMatch(in: s, range: range),
                            let r = Range(m.range(at: 1), in: s) {
                             DispatchQueue.main.async { job.speed = String(s[r]) }
                         }
-                        if let m = etaRegex.firstMatch(in: s, range: range),
+                        if let m = Self.etaRegex.firstMatch(in: s, range: range),
                            let r = Range(m.range(at: 1), in: s) {
                             DispatchQueue.main.async { job.eta = String(s[r]) }
                         }
-                        if let m = destRegex.firstMatch(in: s, range: range),
+                        if let m = Self.destRegex.firstMatch(in: s, range: range),
                            let r = Range(m.range(at: 1), in: s) {
                             DispatchQueue.main.async { job.filename = String(s[r]).trimmingCharacters(in: .whitespaces) }
                         }
-                        if let m = sizeRegex.firstMatch(in: s, range: range),
+                        if let m = Self.sizeRegex.firstMatch(in: s, range: range),
                            let r = Range(m.range(at: 1), in: s) {
                             DispatchQueue.main.async { job.filesizeStr = String(s[r]) }
                         }
                     }
                 }
 
+                handle.closeFile()  // Explicitly close read-side fd
                 process.waitUntilExit()
                 let exitCode = process.terminationStatus
 
@@ -258,8 +277,9 @@ actor YTDLPService {
                         }
                     } else if job.status != .cancelled {
                         job.status = .error
-                        job.error = YTDLPService.parseErrorText(allOutput)
+                        job.error = YTDLPService.parseErrorText(lastLines.joined(separator: "\n"))
                     }
+                    job.process = nil  // Release Process + pipe references
                 }
 
                 continuation.resume()
@@ -300,20 +320,23 @@ actor YTDLPService {
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
 
+                // Timeout
+                let timer = DispatchWorkItem { process.terminate() }
+
                 do {
                     try process.run()
                 } catch {
+                    timer.cancel()
                     continuation.resume(throwing: error)
                     return
                 }
-
-                // Timeout
-                let timer = DispatchWorkItem { process.terminate() }
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
 
                 // Read BEFORE waitUntilExit to avoid pipe buffer deadlock
                 let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
                 let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                stdoutPipe.fileHandleForReading.closeFile()
+                stderrPipe.fileHandleForReading.closeFile()
                 process.waitUntilExit()
                 timer.cancel()
 

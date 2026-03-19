@@ -157,3 +157,11 @@ echo "  📦 DMG:  $(pwd)/dist/Grabby.dmg"
 echo "  📂 App:  $(pwd)/dist/Grabby.app"
 echo "  📏 Size: $APP_SIZE (was 58MB with Python)"
 echo ""
+# Output SHA256 for integrity verification
+if [ -f "dist/Grabby.dmg" ]; then
+    DMG_HASH=$(shasum -a 256 dist/Grabby.dmg | awk '{print $1}')
+    echo "  🔒 SHA256: $DMG_HASH"
+    echo "$DMG_HASH  Grabby.dmg" > dist/Grabby.dmg.sha256
+    echo "  📋 Hash:   dist/Grabby.dmg.sha256"
+    echo ""
+fi

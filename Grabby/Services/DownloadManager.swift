@@ -109,9 +109,22 @@ class DownloadManager: ObservableObject {
     func cancelJob(_ job: DownloadJob) {
         if let process = job.process, process.isRunning {
             process.interrupt()  // SIGINT -- yt-dlp handles gracefully and cleans up children
+            // Force kill after 5 seconds if yt-dlp doesn't exit
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+                if process.isRunning { process.terminate() }
+            }
         }
         job.status = .cancelled
         job.error = "Cancelled"
+        job.process = nil
+    }
+
+    func pruneFinishedJobs(keepLast n: Int = 50) {
+        let finished = jobs.filter { $0.status == .done || $0.status == .error || $0.status == .cancelled }
+        if finished.count > n {
+            let toRemove = Set(finished.dropFirst(n).map(\.id))
+            jobs.removeAll { toRemove.contains($0.id) }
+        }
     }
 
     func revealInFinder(_ job: DownloadJob) {

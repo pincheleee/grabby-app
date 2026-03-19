@@ -10,7 +10,7 @@ class HistoryStore: ObservableObject {
     @Published var items: [HistoryItem] = []
 
     private var db: OpaquePointer?
-    private let dbPath: String
+    nonisolated let dbPath: String
 
     init() {
         let appSupport = FileManager.default.homeDirectoryForCurrentUser
@@ -107,9 +107,7 @@ class HistoryStore: ObservableObject {
             sqlite3_step(stmt)
 
             DispatchQueue.main.async {
-                Task { @MainActor in
-                    HistoryStore.shared.load()
-                }
+                HistoryStore.shared.load()
             }
         }
     }
