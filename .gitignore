@@ -1,0 +1,28 @@
+# Build artifacts
+build/
+dist/
+*.app
+*.dmg
+
+# Xcode
+xcuserdata/
+*.xcworkspace
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+
+# PyInstaller (legacy Python version)
+*.spec
+__pycache__/
+
+# Bundled binaries (downloaded at build time)
+Grabby/Resources/yt-dlp
+Grabby/Resources/ffmpeg
+Grabby/Resources/ffprobe
+bin/
+
+# macOS
+.DS_Store
+._*
+*.swp
