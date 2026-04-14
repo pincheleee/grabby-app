@@ -53,6 +53,9 @@ Grabby/
 ### Validation
 - `bash scripts/run_tests.sh` — arg-building and parsing coverage for `YTDLPService`
 - `bash scripts/runtime_smoke.sh <url> <cookieBrowser|none> <fetch|download> [quality]` — live service smoke test
+- `bash scripts/playlist_smoke.sh <playlistUrl> <cookieBrowser|none> <fetch|download>` — playlist fetch and entry-download smoke test
+- `bash scripts/package_launch_smoke.sh` — mount DMG, copy app, launch packaged build, confirm process starts
+- `bash scripts/soak_test.sh [iterations]` — repeat core validation paths in a lightweight loop
 
 ## Build
 ```bash

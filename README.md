@@ -117,6 +117,24 @@ bash scripts/runtime_smoke.sh 'https://www.youtube.com/watch?v=jNQXAC9IVRw' none
 
 Use `chrome fetch` as the second and third arguments to exercise the cookie-backed metadata path.
 
+Playlist smoke:
+
+```bash
+bash scripts/playlist_smoke.sh 'https://www.youtube.com/playlist?list=PL-jbbyKiQY-VlYYVIlIcio6tsFYNJ_OU3' none download
+```
+
+Packaged app launch smoke:
+
+```bash
+bash scripts/package_launch_smoke.sh
+```
+
+Short soak run:
+
+```bash
+bash scripts/soak_test.sh 2
+```
+
 ## Recent Fixes
 
 2026-04-13 reliability pass:
@@ -127,4 +145,5 @@ Use `chrome fetch` as the second and third arguments to exercise the cookie-back
 - Removed the Swift 6 concurrency warning in the download completion path
 - Moved yt-dlp self-updates to a managed copy under `~/Library/Application Support/Grabby/bin`
 - Added repo-local arg/parser tests and a runtime smoke script
+- Added playlist, packaged-launch, and short soak scripts
 - Removed dead completion-sheet state and the unused theme preference

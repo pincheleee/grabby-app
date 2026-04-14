@@ -7,6 +7,9 @@
 - Repo-local validation scripts:
   - `scripts/run_tests.sh`
   - `scripts/runtime_smoke.sh`
+  - `scripts/playlist_smoke.sh`
+  - `scripts/package_launch_smoke.sh`
+  - `scripts/soak_test.sh`
 - Deterministic `YTDLPService` helper coverage for argument building and output parsing
 
 ### Changed

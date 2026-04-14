@@ -25,6 +25,9 @@ Took the follow-up pass on the Swift app to harden the updater path, make the yt
 ### Validation
 - Added `scripts/run_tests.sh` for repo-local unit-style checks around yt-dlp arg construction and output parsing
 - Added `scripts/runtime_smoke.sh` for end-to-end fetch/download smoke runs against the real service code
+- Added `scripts/playlist_smoke.sh` for playlist fetch plus first-entry download verification
+- Added `scripts/package_launch_smoke.sh` for packaged app launch verification from the built DMG
+- Added `scripts/soak_test.sh` for lightweight repeated end-to-end coverage
 - Verified:
   - `bash scripts/run_tests.sh`
   - `xcodebuild -project Grabby.xcodeproj -scheme Grabby ... build`
