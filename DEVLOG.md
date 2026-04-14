@@ -1,5 +1,41 @@
 # Grabby — Development Log
 
+## 2026-04-13 — reliability/tooling pass
+
+### What changed
+Took the follow-up pass on the Swift app to harden the updater path, make the yt-dlp integration more testable, and clean stale UI/prefs state that had drifted from the current app behavior.
+
+### Runtime/tooling changes
+- Refactored `YTDLPService` around explicit helper functions for:
+  - info args
+  - playlist args
+  - download args
+  - line parsing
+- Added `ParsedYTDLPLine`, `BinaryStatus`, and `DependencyStatus` to make parsing and dependency resolution easier to test and surface in the UI
+- Added a managed `yt-dlp` copy path at `~/Library/Application Support/Grabby/bin/yt-dlp`
+- `updateYTDLP()` now bootstraps from the bundled binary when needed and updates the managed copy instead of mutating the signed app bundle
+
+### UI/settings cleanup
+- Added dependency health rows in Settings for `yt-dlp` and `ffmpeg`
+- Added a maintenance note explaining why updates install outside the app bundle
+- Removed the dead done-sheet state from `ContentView`
+- Removed the unused `theme` preference from `PreferencesStore`
+- Renamed the menu action to `Update Managed yt-dlp`
+
+### Validation
+- Added `scripts/run_tests.sh` for repo-local unit-style checks around yt-dlp arg construction and output parsing
+- Added `scripts/runtime_smoke.sh` for end-to-end fetch/download smoke runs against the real service code
+- Verified:
+  - `bash scripts/run_tests.sh`
+  - `xcodebuild -project Grabby.xcodeproj -scheme Grabby ... build`
+  - live runtime smoke for cookie-backed metadata fetch
+  - live runtime smoke for no-cookie download and merged-output resolution
+
+### Notes
+- The updater intentionally refuses to modify a Homebrew-managed `yt-dlp` install from inside the app
+- The test/smoke approach stays out of `Grabby.xcodeproj` for now; it is script-driven rather than an XCTest target
+- `.derivedData/` was added to `.gitignore` because this repo uses that local build path during CLI validation
+
 ## 2026-03-18 — v2.0.0: Major feature update
 
 ### What changed

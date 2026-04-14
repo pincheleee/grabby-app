@@ -22,7 +22,7 @@ struct GrabbyApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appSettings) {
-                Button("Check for yt-dlp Updates") {
+                Button("Update Managed yt-dlp") {
                     Task { await YTDLPService.shared.updateYTDLP() }
                 }
             }

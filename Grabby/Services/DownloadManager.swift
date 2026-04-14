@@ -51,29 +51,14 @@ class DownloadManager: ObservableObject {
         let job = DownloadJob(url: url, title: title, thumbnail: thumbnail)
         jobs.insert(job, at: 0)
 
-        Task.detached { [weak self] in
+        Task { [weak self] in
             await YTDLPService.shared.startDownload(
                 job: job, format: format, quality: quality,
                 cookieBrowser: cookieBrowser, downloadDir: downloadDir
             )
 
-            await MainActor.run {
-                if job.status == .done {
-                    self?.sendNotification(title: job.title.isEmpty ? "Download Complete" : job.title)
-                    let filesize: Int64
-                    if let attrs = try? FileManager.default.attributesOfItem(atPath: job.filename),
-                       let size = attrs[.size] as? Int64 {
-                        filesize = size
-                    } else {
-                        filesize = 0
-                    }
-                    HistoryStore.shared.add(
-                        url: job.url, title: job.title.isEmpty ? (job.filename as NSString).lastPathComponent : job.title,
-                        filename: job.filename, format: format.rawValue,
-                        duration: 0, filesize: filesize, thumbnail: job.thumbnail
-                    )
-                }
-            }
+            guard let self, job.status == .done else { return }
+            self.recordCompletedDownload(job: job, format: format)
         }
     }
 
@@ -164,6 +149,24 @@ class DownloadManager: ObservableObject {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private func recordCompletedDownload(job: DownloadJob, format: DownloadFormat) {
+        sendNotification(title: job.title.isEmpty ? "Download Complete" : job.title)
+
+        let filesize: Int64
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: job.filename),
+           let size = attrs[.size] as? Int64 {
+            filesize = size
+        } else {
+            filesize = 0
+        }
+
+        HistoryStore.shared.add(
+            url: job.url, title: job.title.isEmpty ? (job.filename as NSString).lastPathComponent : job.title,
+            filename: job.filename, format: format.rawValue,
+            duration: 0, filesize: filesize, thumbnail: job.thumbnail
+        )
     }
 
     var activeCount: Int {

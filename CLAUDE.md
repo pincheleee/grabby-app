@@ -35,15 +35,24 @@ Grabby/
 
 ### Runtime
 - yt-dlp runs as `Process` (subprocess) with stdout progress parsing via regex
-- Downloads throttled to 3 concurrent via `DispatchSemaphore`
+- Playlist metadata uses `yt-dlp --flat-playlist --dump-json`
+- Downloads capped at 3 concurrent via `DownloadManager` slot gating
+- Final output path is captured from yt-dlp `after_move` output when available
+- Settings surfaces dependency health for `yt-dlp` and `ffmpeg`
 - SQLite via raw C API (`sqlite3.h`) — no SwiftData/CoreData
 - Preferences stored as JSON at `~/Library/Application Support/Grabby/prefs.json`
+- Preferences include separate saved defaults for video format and audio format
 - macOS UserNotifications for download completion
 
 ### Binary resolution order
-1. `Bundle.main.path(forResource:)` — inside .app bundle
-2. Homebrew paths (`/opt/homebrew/bin/`, `/usr/local/bin/`)
-3. System PATH
+1. Managed `yt-dlp` at `~/Library/Application Support/Grabby/bin/yt-dlp`
+2. `Bundle.main.path(forResource:)` — inside `.app` bundle
+3. Homebrew paths (`/opt/homebrew/bin/`, `/usr/local/bin/`)
+4. No generic PATH fallback for `yt-dlp` — fail fast if it is missing
+
+### Validation
+- `bash scripts/run_tests.sh` — arg-building and parsing coverage for `YTDLPService`
+- `bash scripts/runtime_smoke.sh <url> <cookieBrowser|none> <fetch|download> [quality]` — live service smoke test
 
 ## Build
 ```bash
@@ -58,6 +67,8 @@ Or open `Grabby.xcodeproj` in Xcode and build directly.
 - SwiftUI native controls — no custom CSS, follows system appearance automatically
 - Segmented picker for tabs (Download / Queue / History)
 - Settings via native macOS Settings window (Cmd+,)
+- Main download UI has separate video/audio mode defaults
+- `yt-dlp` updates must not mutate the signed app bundle; use the managed copy flow
 - All error messages from yt-dlp are parsed into human-friendly strings
 - Downloads save to `~/Downloads/Grabby/` by default (configurable)
 

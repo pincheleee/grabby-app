@@ -3,6 +3,20 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var prefs: PreferencesStore
     @State private var updateMessage = ""
+    @State private var dependencyStatus: DependencyStatus?
+    @State private var isRefreshingDependencies = false
+    @State private var isUpdatingYTDLP = false
+
+    private var updateButtonTitle: String {
+        switch dependencyStatus?.ytdlp.source {
+        case .bundled:
+            return "Install Managed Copy"
+        case .managed:
+            return "Check for Updates"
+        default:
+            return "Check for Updates"
+        }
+    }
 
     var body: some View {
         Form {
@@ -51,33 +65,95 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Dependencies") {
+                if isRefreshingDependencies && dependencyStatus == nil {
+                    ProgressView("Checking dependencies...")
+                } else if let dependencyStatus {
+                    dependencyRow(title: "yt-dlp", status: dependencyStatus.ytdlp)
+                    dependencyRow(title: "ffmpeg", status: dependencyStatus.ffmpeg)
+                } else {
+                    Text("Dependency status unavailable.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Maintenance") {
+                Text("Grabby installs yt-dlp updates into `~/Library/Application Support/Grabby/bin` so the signed app bundle stays untouched.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+
                 HStack {
                     Text("yt-dlp")
                     Spacer()
-                    if updateMessage.isEmpty {
-                        Button("Check for Updates") {
-                            Task {
-                                updateMessage = "Checking..."
-                                updateMessage = await YTDLPService.shared.updateYTDLP()
-                                try? await Task.sleep(for: .seconds(3))
-                                updateMessage = ""
-                            }
-                        }
+                    if isUpdatingYTDLP {
+                        ProgressView()
                     } else {
-                        Text(updateMessage)
-                            .foregroundStyle(.secondary)
-                            .font(.system(size: 13))
+                        Button(updateButtonTitle) {
+                            Task { await updateYTDLP() }
+                        }
+                    }
+                }
+
+                if !updateMessage.isEmpty {
+                    Text(updateMessage)
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13))
+                }
+
+                HStack {
+                    Text("Dependency Health")
+                    Spacer()
+                    if isRefreshingDependencies {
+                        ProgressView()
+                    } else {
+                        Button("Refresh Status") {
+                            Task { await refreshDependencyStatus() }
+                        }
                     }
                 }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 400)
+        .frame(width: 520, height: 460)
+        .task {
+            await refreshDependencyStatus()
+        }
         .onChange(of: prefs.format) { _, _ in prefs.save() }
         .onChange(of: prefs.quality) { _, _ in prefs.save() }
         .onChange(of: prefs.audioFormat) { _, _ in prefs.save() }
         .onChange(of: prefs.cookieBrowser) { _, _ in prefs.save() }
         .onChange(of: prefs.downloadDir) { _, _ in prefs.save() }
+    }
+
+    private func dependencyRow(title: String, status: BinaryStatus) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(status.source.label)
+                    .foregroundStyle(status.isAvailable ? Color.secondary : Color.red)
+                    .font(.system(size: 12, weight: .medium))
+            }
+
+            Text(status.pathLabel)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(status.isAvailable ? Color.secondary : Color.red)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func refreshDependencyStatus() async {
+        isRefreshingDependencies = true
+        dependencyStatus = await YTDLPService.shared.dependencyStatus()
+        isRefreshingDependencies = false
+    }
+
+    private func updateYTDLP() async {
+        isUpdatingYTDLP = true
+        updateMessage = "Checking..."
+        updateMessage = await YTDLPService.shared.updateYTDLP()
+        await refreshDependencyStatus()
+        isUpdatingYTDLP = false
     }
 }

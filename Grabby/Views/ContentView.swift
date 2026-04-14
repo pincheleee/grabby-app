@@ -6,6 +6,11 @@ enum AppTab: String, CaseIterable {
     case history = "History"
 }
 
+enum DownloadMode: String, CaseIterable {
+    case video = "Video"
+    case audio = "Audio"
+}
+
 struct ContentView: View {
     @EnvironmentObject var dm: DownloadManager
     @EnvironmentObject var history: HistoryStore
@@ -13,10 +18,14 @@ struct ContentView: View {
 
     @State private var selectedTab: AppTab = .download
     @State private var urlText = ""
-    @State private var selectedFormat: DownloadFormat = .mp4
+    @State private var selectedMode: DownloadMode = .video
+    @State private var selectedVideoFormat: DownloadFormat = .mp4
+    @State private var selectedAudioFormat: DownloadFormat = .mp3
     @State private var selectedQuality: VideoQuality = .best
-    @State private var showingDone = false
-    @State private var lastDoneJob: DownloadJob?
+
+    private var activeFormat: DownloadFormat {
+        selectedMode == .video ? selectedVideoFormat : selectedAudioFormat
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,12 +96,19 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            selectedFormat = prefs.format
+            selectedVideoFormat = prefs.format
+            selectedAudioFormat = prefs.audioFormat
             selectedQuality = prefs.quality
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
-        .sheet(isPresented: $showingDone) {
-            doneSheet
+        .onChange(of: prefs.format) { _, format in
+            selectedVideoFormat = format
+        }
+        .onChange(of: prefs.audioFormat) { _, format in
+            selectedAudioFormat = format
+        }
+        .onChange(of: prefs.quality) { _, quality in
+            selectedQuality = quality
         }
     }
 
@@ -147,6 +163,20 @@ struct ContentView: View {
 
             // Options
             VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TYPE")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .tracking(1.5)
+
+                    Picker("Type", selection: $selectedMode) {
+                        ForEach(DownloadMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("FORMAT")
@@ -154,22 +184,24 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .tracking(1.5)
 
-                        Picker("Format", selection: $selectedFormat) {
-                            Section("Video") {
+                        if selectedMode == .video {
+                            Picker("Format", selection: $selectedVideoFormat) {
                                 ForEach(DownloadFormat.videoFormats) { fmt in
                                     Text(fmt.label).tag(fmt)
                                 }
                             }
-                            Section("Audio Only") {
+                            .labelsHidden()
+                        } else {
+                            Picker("Format", selection: $selectedAudioFormat) {
                                 ForEach(DownloadFormat.audioFormats) { fmt in
                                     Text(fmt.label).tag(fmt)
                                 }
                             }
+                            .labelsHidden()
                         }
-                        .labelsHidden()
                     }
 
-                    if !selectedFormat.isAudio {
+                    if selectedMode == .video {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("QUALITY")
                                 .font(.system(size: 11, weight: .medium))
@@ -274,43 +306,6 @@ struct ContentView: View {
         .onAppear { history.load() }
     }
 
-    // MARK: - Done Sheet
-
-    private var doneSheet: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.green)
-
-            Text("Download Complete")
-                .font(.system(size: 18, weight: .semibold))
-
-            if let job = lastDoneJob {
-                Text((job.filename as NSString).lastPathComponent)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
-            HStack(spacing: 12) {
-                Button("Show in Finder") {
-                    if let job = lastDoneJob { dm.revealInFinder(job) }
-                    showingDone = false
-                }
-
-                Button("New Download") {
-                    showingDone = false
-                    dm.reset()
-                    urlText = ""
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(hex: "ff5c39"))
-            }
-        }
-        .padding(32)
-        .frame(width: 400)
-    }
-
     // MARK: - Helpers
 
     private func fetchInfo() {
@@ -326,7 +321,7 @@ struct ContentView: View {
         if dm.isPlaylist {
             dm.startPlaylistDownload(
                 entries: dm.playlistEntries,
-                format: selectedFormat, quality: selectedQuality,
+                format: activeFormat, quality: selectedQuality,
                 cookieBrowser: prefs.cookieBrowser, downloadDir: prefs.downloadDir
             )
             selectedTab = .queue
@@ -335,7 +330,7 @@ struct ContentView: View {
                 url: urlText,
                 title: dm.currentInfo?.title ?? "",
                 thumbnail: dm.currentInfo?.thumbnail ?? "",
-                format: selectedFormat, quality: selectedQuality,
+                format: activeFormat, quality: selectedQuality,
                 cookieBrowser: prefs.cookieBrowser, downloadDir: prefs.downloadDir
             )
         }

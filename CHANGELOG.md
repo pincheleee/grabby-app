@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased] — 2026-04-13
+
+### Added
+- Dependency health section in Settings showing `yt-dlp` and `ffmpeg` availability, source, and resolved path
+- Repo-local validation scripts:
+  - `scripts/run_tests.sh`
+  - `scripts/runtime_smoke.sh`
+- Deterministic `YTDLPService` helper coverage for argument building and output parsing
+
+### Changed
+- `yt-dlp` updates now install and update a managed copy under `~/Library/Application Support/Grabby/bin`
+- Managed `yt-dlp` is preferred over bundled/Homebrew copies when available
+- Main menu updater action renamed to `Update Managed yt-dlp`
+- Removed the unused theme preference from stored app settings
+- Removed dead completion-sheet state from the main view
+
+### Fixed
+- Cookie-browser arguments now stay before the yt-dlp `--` sentinel for metadata and playlist fetches
+- Final merged output path is captured from yt-dlp `after_move` output instead of relying on intermediate destination lines
+- Finder reveal and history entries now resolve to the real finished file more reliably
+- Added `.derivedData/` to `.gitignore`
+
 ## [3.0.0] — 2026-03-18
 
 ### Rewritten in Swift/SwiftUI

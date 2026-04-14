@@ -8,7 +8,6 @@ class PreferencesStore: ObservableObject {
     @Published var audioFormat: DownloadFormat = .mp3
     @Published var cookieBrowser: String = ""
     @Published var downloadDir: String = ""
-    @Published var theme: String = "dark"
 
     private let prefsURL: URL
 
@@ -36,7 +35,6 @@ class PreferencesStore: ObservableObject {
         if let af = json["audio_format"] as? String, let afmt = DownloadFormat(rawValue: af) { audioFormat = afmt }
         if let cb = json["cookie_browser"] as? String { cookieBrowser = cb }
         if let dd = json["download_dir"] as? String, !dd.isEmpty { downloadDir = dd }
-        if let t = json["theme"] as? String { theme = t }
     }
 
     func save() {
@@ -46,13 +44,9 @@ class PreferencesStore: ObservableObject {
             "audio_format": audioFormat.rawValue,
             "cookie_browser": cookieBrowser,
             "download_dir": downloadDir,
-            "theme": theme,
         ]
         if let data = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted) {
             try? data.write(to: prefsURL)
         }
     }
-
-    var effectiveFormat: DownloadFormat { format }
-    var effectiveQuality: VideoQuality { quality }
 }
