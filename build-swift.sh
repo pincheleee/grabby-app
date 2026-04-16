@@ -11,7 +11,7 @@ echo "  ╚═══════════════════════
 echo ""
 
 # ------------------------------------------------------------------
-# Step 1: Download yt-dlp + ffmpeg if needed
+# Step 1: Download yt-dlp if needed
 # ------------------------------------------------------------------
 echo "  [1/4] Checking bundled binaries..."
 mkdir -p Grabby/Resources
@@ -23,19 +23,12 @@ if [ ! -f "Grabby/Resources/yt-dlp" ]; then
 fi
 echo "        yt-dlp: $(du -h Grabby/Resources/yt-dlp | awk '{print $1}')"
 
-if [ ! -f "Grabby/Resources/ffmpeg" ]; then
-    echo "        Copying ffmpeg from Homebrew..."
-    if command -v ffmpeg &> /dev/null; then
-        cp "$(which ffmpeg)" Grabby/Resources/ffmpeg
-        chmod +x Grabby/Resources/ffmpeg
-        FFPROBE=$(which ffprobe 2>/dev/null)
-        [ -n "$FFPROBE" ] && cp "$FFPROBE" Grabby/Resources/ffprobe && chmod +x Grabby/Resources/ffprobe
-    else
-        echo "  ❌ ffmpeg not found. Run: brew install ffmpeg"
-        exit 1
-    fi
+# ffmpeg is resolved at runtime from Homebrew (/opt/homebrew/bin/ffmpeg)
+if command -v ffmpeg &> /dev/null; then
+    echo "        ffmpeg: $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}') (Homebrew, runtime)"
+else
+    echo "  ⚠️  ffmpeg not found. Install with: brew install ffmpeg"
 fi
-echo "        ffmpeg: $(du -h Grabby/Resources/ffmpeg | awk '{print $1}')"
 echo "        ✅ Binaries ready"
 
 # ------------------------------------------------------------------
@@ -63,6 +56,15 @@ rm -rf dist/Grabby.app
 cp -R "$APP_PATH" dist/Grabby.app
 
 APP_SIZE=$(du -sh dist/Grabby.app | awk '{print $1}')
+
+# Copy app icon into bundle
+if [ -f "assets/Grabby.icns" ]; then
+    cp assets/Grabby.icns dist/Grabby.app/Contents/Resources/AppIcon.icns
+    /usr/libexec/PlistBuddy -c "Delete :CFBundleIconFile" dist/Grabby.app/Contents/Info.plist 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" dist/Grabby.app/Contents/Info.plist
+    echo "        ✅ App icon set"
+fi
+
 echo "        ✅ Grabby.app built ($APP_SIZE)"
 
 # ------------------------------------------------------------------
@@ -85,7 +87,7 @@ xattr -cr dist/Grabby.app 2>/dev/null || true
 find dist/Grabby.app -name "._*" -delete 2>/dev/null || true
 
 # Sign bundled binaries first (inside-out)
-for BIN in dist/Grabby.app/Contents/Resources/yt-dlp dist/Grabby.app/Contents/Resources/ffmpeg dist/Grabby.app/Contents/Resources/ffprobe; do
+for BIN in dist/Grabby.app/Contents/Resources/yt-dlp; do
     [ -f "$BIN" ] && codesign --force --sign "$SIGN_ID" --timestamp "$BIN" 2>/dev/null || true
 done
 
@@ -110,7 +112,9 @@ DMG_TMP="dist/grabby_tmp.dmg"
 DMG_FINAL="dist/Grabby.dmg"
 rm -f "$DMG_TMP" "$DMG_FINAL"
 
-hdiutil create -size 100m -fs HFS+ -volname "Grabby" -ov "$DMG_TMP" > /dev/null 2>&1
+APP_SIZE_BYTES=$(du -sk dist/Grabby.app | awk '{print $1}')
+DMG_SIZE_MB=$(( (APP_SIZE_BYTES / 1024) + 20 ))
+hdiutil create -size "${DMG_SIZE_MB}m" -fs HFS+ -volname "Grabby" -ov "$DMG_TMP" > /dev/null 2>&1
 MOUNT_DIR=$(hdiutil attach "$DMG_TMP" -nobrowse -noverify 2>/dev/null | grep "/Volumes" | awk '{print $NF}')
 [ -z "$MOUNT_DIR" ] && MOUNT_DIR="/Volumes/Grabby"
 
