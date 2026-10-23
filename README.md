@@ -5,10 +5,10 @@ A native macOS YouTube downloader built with SwiftUI, `yt-dlp`, and `ffmpeg`. Pa
 ## Project Status
 
 - Status: stable
-- Active app: `Grabby.xcodeproj` / `Grabby/`
-- Last reliability pass: 2026-04-13
-- Build: `bash build-swift.sh`
-- Bundle output: `dist/Grabby.app` and `dist/Grabby.dmg`
+- Last major update: 2026-04-13
+- Current focus: native macOS YouTube downloader; shipped and on portfolio
+- Run: `bash build-swift.sh`
+- Next step: maintenance only; app is complete
 
 The old Python prototype is still in the repo for reference, but the supported desktop app is the native Swift/SwiftUI build.
 

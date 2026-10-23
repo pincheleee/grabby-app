@@ -46,8 +46,12 @@ struct VideoInfo: Decodable, Identifiable {
 
     var durationString: String {
         guard duration > 0 else { return "" }
-        let m = duration / 60
+        let h = duration / 3600
+        let m = (duration % 3600) / 60
         let s = duration % 60
+        if h > 0 {
+            return "\(h):\(String(format: "%02d", m)):\(String(format: "%02d", s))"
+        }
         return "\(m):\(String(format: "%02d", s))"
     }
 
@@ -76,8 +80,12 @@ struct PlaylistEntry: Identifiable {
 
     var durationString: String {
         guard duration > 0 else { return "" }
-        let m = duration / 60
+        let h = duration / 3600
+        let m = (duration % 3600) / 60
         let s = duration % 60
+        if h > 0 {
+            return "\(h):\(String(format: "%02d", m)):\(String(format: "%02d", s))"
+        }
         return "\(m):\(String(format: "%02d", s))"
     }
 }

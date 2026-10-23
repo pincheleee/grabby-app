@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 enum AppTab: String, CaseIterable {
     case download = "Download"
@@ -109,6 +110,24 @@ struct ContentView: View {
         }
         .onChange(of: prefs.quality) { _, quality in
             selectedQuality = quality
+        }
+        .onChange(of: selectedVideoFormat) { _, format in
+            if prefs.format != format {
+                prefs.format = format
+                prefs.save()
+            }
+        }
+        .onChange(of: selectedAudioFormat) { _, format in
+            if prefs.audioFormat != format {
+                prefs.audioFormat = format
+                prefs.save()
+            }
+        }
+        .onChange(of: selectedQuality) { _, quality in
+            if prefs.quality != quality {
+                prefs.quality = quality
+                prefs.save()
+            }
         }
     }
 
@@ -365,5 +384,3 @@ extension Color {
         self.init(red: r, green: g, blue: b)
     }
 }
-
-import UserNotifications

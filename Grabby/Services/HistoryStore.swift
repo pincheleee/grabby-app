@@ -10,6 +10,7 @@ class HistoryStore: ObservableObject {
     @Published var items: [HistoryItem] = []
 
     private var db: OpaquePointer?
+    private var dbIsOpen = false
     nonisolated let dbPath: String
 
     init() {
@@ -18,16 +19,20 @@ class HistoryStore: ObservableObject {
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         dbPath = appSupport.appendingPathComponent("history.db").path
         openDB()
-        createTable()
-        load()
+        if dbIsOpen {
+            createTable()
+            load()
+        }
     }
 
     private func openDB() {
         if sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) != SQLITE_OK {
-            print("Failed to open database")
+            print("Failed to open history database at \(dbPath)")
+            return
         }
         sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
         sqlite3_busy_timeout(db, 10000)
+        dbIsOpen = true
     }
 
     private func createTable() {
@@ -53,6 +58,7 @@ class HistoryStore: ObservableObject {
 
     func load() {
         items = []
+        guard dbIsOpen else { return }
         let sql = "SELECT id, url, title, filename, format, duration, filesize, downloaded_at, thumbnail FROM history ORDER BY id DESC LIMIT 50"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -106,13 +112,14 @@ class HistoryStore: ObservableObject {
             sqlite3_bind_text(stmt, 8, (thumbnail as NSString).utf8String, -1, SQLITE_TRANSIENT)
             sqlite3_step(stmt)
 
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 HistoryStore.shared.load()
             }
         }
     }
 
     func clearAll() {
+        guard dbIsOpen else { return }
         sqlite3_exec(db, "DELETE FROM history", nil, nil, nil)
         items = []
     }

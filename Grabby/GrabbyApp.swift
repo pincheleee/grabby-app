@@ -5,6 +5,7 @@ struct GrabbyApp: App {
     @StateObject private var downloadManager = DownloadManager()
     @StateObject private var historyStore = HistoryStore.shared
     @StateObject private var prefsStore = PreferencesStore()
+    @State private var updateMessage: String?
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +17,14 @@ struct GrabbyApp: App {
                 .onDrop(of: [.url, .text], isTargeted: nil) { providers in
                     handleDrop(providers)
                 }
+                .alert("yt-dlp Update", isPresented: Binding(
+                    get: { updateMessage != nil },
+                    set: { if !$0 { updateMessage = nil } }
+                )) {
+                    Button("OK") { updateMessage = nil }
+                } message: {
+                    Text(updateMessage ?? "")
+                }
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 700, height: 860)
@@ -23,7 +32,7 @@ struct GrabbyApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appSettings) {
                 Button("Update Managed yt-dlp") {
-                    Task { await YTDLPService.shared.updateYTDLP() }
+                    Task { updateMessage = await YTDLPService.shared.updateYTDLP() }
                 }
             }
         }

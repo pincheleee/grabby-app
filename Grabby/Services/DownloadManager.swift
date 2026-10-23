@@ -70,18 +70,17 @@ class DownloadManager: ObservableObject {
         downloadDir: String
     ) {
         let selected = entries.filter { $0.selected }
-        for (index, entry) in selected.enumerated() {
-            let url = entry.url.hasPrefix("http") ? entry.url : "https://www.youtube.com/watch?v=\(entry.url)"
-            // Stagger starts to respect maxConcurrent
-            let delay = max(0, index - maxConcurrent + 1)
-            Task {
-                if delay > 0 {
-                    try? await Task.sleep(for: .seconds(Double(delay) * 2))
-                }
-                // Wait for a slot
+        guard !selected.isEmpty else { return }
+
+        // Single task processes the entire queue sequentially,
+        // waiting for an open slot before launching each download.
+        Task {
+            for entry in selected {
+                // Wait for a slot to open (single poller, not N)
                 while activeCount >= maxConcurrent {
-                    try? await Task.sleep(for: .milliseconds(500))
+                    try? await Task.sleep(for: .seconds(1))
                 }
+                let url = entry.url.hasPrefix("http") ? entry.url : "https://www.youtube.com/watch?v=\(entry.url)"
                 startDownload(
                     url: url, title: entry.title,
                     format: format, quality: quality,
